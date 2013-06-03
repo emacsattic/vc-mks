@@ -35,13 +35,6 @@
 ;;   Study `after-' functionality. Idea: list members and non-members
 ;;
 ;; Internal:
-;; - indent of `with-' macros
-;;
-;; - use `defgroup'
-;;
-;; - Differ between internal and public interface via `vc-mks-' and
-;;   `vc-mks--' convention.
-;;
 ;; - Abstract completion interface, "default" and "ido" should be
 ;;   possible.
 ;;
@@ -62,27 +55,38 @@
   (require 'vc)
   (require 'ido))
 
+(defgroup vc-mks nil
+  "VC MKS Integrity backend."
+  :verson "1.1"
+  :group  'vc)
+
 (defvar vc-mks-debug nil
   "Print debug messages if non-nil.")
 
-(defvar vc-mks-server ""
-  "Name of your MKS server.")
+(defcustom vc-mks-server ""
+  "Name of your MKS server."
+  :type  'string
+  :group 'vc-mks)
 
-(defvar vc-mks-user (user-login-name)
-  "Name of default user.")
+(defcustom vc-mks-user (user-login-name)
+  "Name of default user."
+  :type  'string
+  :group 'vc-mks)
 
-(defvar vc-mks-password nil
-  "Default password to login.")
+(defcustom vc-mks-password nil
+  "Default password to login."
+  :type  'string
+  :group 'vc-mks)
 
 (defcustom vc-mks-diff-switches "--context=3"
-  "Number of lines for context.")
+  "Number of lines for context."
+  :type  'string
+  :group 'vc-mks)
 
 ;; Some constant definitions
-(defconst vc-mks-common-switches '("--batch" "--yes" "--quiet"))
-(defconst vc-mks-si-command "si")
-(defconst vc-mks-cmd-buffer-name "*mks*")
-
-(setq vc-command-messages t)		; For debug purposes
+(defconst vc-mks--common-switches '("--batch" "--yes" "--quiet"))
+(defconst vc-mks--si-command "si")
+(defconst vc-mks--cmd-buffer-name "*mks*")
 
 (defun vc-mks-revision-granularity () 'file)
 
@@ -107,10 +111,10 @@
   "MKS-specific version of `vc-state'."
   (if (not (vc-mks-registered file)) 'unregistered
     (with-temp-buffer
-      (vc-mks-command (current-buffer) 0 file
-		      "viewsandbox"
-		      (format "--sandbox=%s"
-			      (vc-file-getprop file 'sandbox)))
+      (vc-mks--command (current-buffer) 0 file
+                       "viewsandbox"
+                       (format "--sandbox=%s"
+                               (vc-file-getprop file 'sandbox)))
       (goto-char (point-min))
       (re-search-forward
        ".*archived *\\([0-9.]+\\)\\(?:.*(\\(.*\\)):exclusive\\)?")
@@ -151,10 +155,10 @@
 (defun vc-mks-working-revision (file)
   "MKS-specific version of `vc-working-revision'."
   (with-temp-buffer
-    (vc-mks-command (current-buffer) 1 file
-		    "viewsandbox"
-		    "--fields=workingrev"
-		    (format "--sandbox=%s" (vc-file-getprop file 'sandbox)))
+    (vc-mks--command (current-buffer) 1 file
+                     "viewsandbox"
+                     "--fields=workingrev"
+                     (format "--sandbox=%s" (vc-file-getprop file 'sandbox)))
     (buffer-substring-no-properties (point-min) (1- (point-max)))))
 
 (defun vc-mks-checkout-model (file)
@@ -166,36 +170,36 @@
 
 (defun vc-mks-register (files &optional rev comment)
   (message "Register %S rev:%s comment:%s" files rev comment)
-  (apply 'vc-mks-command-with-cpid nil 1 files "add"))
+  (apply 'vc-mks--command-with-cpid nil 1 files "add"))
 
 (defun vc-mks-checkin (files rev comment)
-  (vc-mks-command-with-cpid nil 0 files
-			    "ci" (format "--description=%s" comment)))
+  (vc-mks--command-with-cpid nil 0 files
+                             "ci" (format "--description=%s" comment)))
 
 (defun vc-mks-find-revision (file rev buffer)
-  (vc-mks-command-with-cpid buffer 0 file
-			    "co" (format "--revision=%s"
-					 (cond ((string= "" rev) ":member")
-					       (t rev)))))
+  (vc-mks--command-with-cpid buffer 0 file
+                             "co" (format "--revision=%s"
+                                          (cond ((string= "" rev) ":member")
+                                                (t rev)))))
 
 (defun vc-mks-checkout (file &optional editable rev)
-  (vc-mks-command-with-cpid nil 0 file
-			    "co"
-			    (when rev
-			      (format "--revision=%s"
-				      (cond ((string= rev "") ":member")
-					    ((eq rev t) ":head")
-					    (t rev))))))
+  (vc-mks--command-with-cpid nil 0 file
+                             "co"
+                             (when rev
+                               (format "--revision=%s"
+                                       (cond ((string= rev "") ":member")
+                                             ((eq rev t) ":head")
+                                             (t rev))))))
 
 (defun vc-mks-revert (file &optional contents-done)
   (if (file-directory-p file)
       (mapc 'vc-mks-revert (vc-expand-dirs (list file)))
-    (vc-mks-command nil 1 file "revert")))
+    (vc-mks--command nil 1 file "revert")))
 
 (defun vc-mks-print-log (files buffer &optional shortlog start-revision limit)
   (let ((coding-system-for-write 'cp850)
 	(coding-system-for-read  'cp850))
-    (vc-mks-command buffer 0 files "rlog")
+    (vc-mks--command buffer 0 files "rlog")
     (when limit 'limit-unsupported)))
 
 ;; (defun vc-mks-log-outgoing (backend remote-location)
@@ -206,7 +210,7 @@
 
 (defun vc-mks-diff (files &optional rev1 rev2 buffer)
   "Get a difference report between two files."
-  (apply 'vc-mks-command buffer 16
+  (apply 'vc-mks--command buffer 16
 	 (vc-expand-dirs files)
 	 "diff"
 	 (append (list (and rev1 (concat "-r" rev1))
@@ -215,19 +219,19 @@
 
 
 (defun vc-mks-merge (file r1 &optional r2)
-   "Merge changes into current working copy of FILE."
-   (vc-mks-command nil 0 file
-		   "merge"
-		   "--mergeType=automatic"
-		   "--onMergeConflict=highlight"
-		   "-r" (if r2 (format "%s -r %s" r1 r2) r1))
-   (vc-fifle-setprop file 'vc-status 'edited)
-   (with-current-buffer (get-buffer vc-mks-cmd-buffer-name)
-     (goto-char (point-min))
-     (if (re-search-forward "Warning: .* had .* overlap during merge") 1 0)))
+  "Merge changes into current working copy of FILE."
+  (vc-mks--command nil 0 file
+                   "merge"
+                   "--mergeType=automatic"
+                   "--onMergeConflict=highlight"
+                   "-r" (if r2 (format "%s -r %s" r1 r2) r1))
+  (vc-file-setprop file 'vc-status 'edited)
+  (with-current-buffer (get-buffer vc-mks--cmd-buffer-name)
+    (goto-char (point-min))
+    (if (re-search-forward "Warning: .* had .* overlap during merge") 1 0)))
 
 (defun vc-mks-annotate-command (file buffer &optional rev)
-  (vc-mks-command buffer 1 file "annotate" (vc-switches 'MKS 'annotate)))
+  (vc-mks--command buffer 1 file "annotate" (vc-switches 'MKS 'annotate)))
 
 (defun vc-mks-annotate-time ()
   nil)
@@ -254,12 +258,12 @@
     (funcall update-function result nil)))
 
 (defun vc-mks-dir-status (dir update-function)
-  (vc-mks-command (current-buffer) 'async nil "viewsandbox")
+  (vc-mks--command (current-buffer) 'async nil "viewsandbox")
   (vc-exec-after
    `(vc-mks--after-dir-status ,dir #',update-function)))
 
 (defun vc-mks-status-files (dir files default-sate update-function)
-  (vc-mks-command (current-buffer) 'async files "viewsandbox")
+  (vc-mks--command (current-buffer) 'async files "viewsandbox")
   (vc-exec-after
    `(vc-mks--after-dir-status ,dir ',update-function)))
 
@@ -273,51 +277,48 @@
 	  (propertize "Branch     : " 'face 'font-lock-type-face)
 	  (propertize "trunk" 'face 'font-lock-variable-name-face)))
 
+(defun vc-mks-previous-revision (file rev)
+  (vc-call-backend 'RCS 'previous-revision file rev))
 
-;; (defun vc-previous-revision (file rev)
-;;   nil)
-
-;; (defun vc-mks-next-revision (file rev)
-;;   nil)
-
+(defun vc-mks-next-revision (file rev)
+  (vc-call-backend 'RCS 'next-revision file rev))
 
 ;; Additional MKS specific functions
 (defun vc-mks-connect ()
   (interactive)
-  (let ((server (or vc-mks-server   (read-from-minibuffer "Server: ")))
-	(user   (or vc-mks-user     (read-from-minibuffer "User: " (user-login-name)))))
-    ;; An dieser Stelle benutzen wir `vc-do-command' direkt, sonst
-    ;; haben wir eine endlos Schleifen.
-    (vc-do-command vc-mks-cmd-buffer-name 0 vc-mks-si-command nil "connect"
+  (let ((server (or vc-mks-server (read-from-minibuffer "Server: ")))
+	(user   (or vc-mks-user   (read-from-minibuffer "User: " (user-login-name)))))
+    ;; Use `vc-do-command' to avoid the endless loop.
+    (vc-do-command vc-mks--cmd-buffer-name 0 vc-mks--si-command nil "connect"
 		   "-g"
 		   (concat "--hostname=" server)
 		   (concat "--user=" user))))
 
 (defun vc-mks-disconnect ()
   (interactive)
-  ;; Hier wollen nicht vc-mks-command nutzen, da dies dafür sorgt,
-  ;; dass eine Verbindung etabliert wird.
-  (vc-do-command vc-mks-cmd-buffer-name 0 vc-mks-si-command nil "disconnect"))
+  ;; Use `vc-do-command' to avoid the re-connection.
+  (vc-do-command vc-mks--cmd-buffer-name 0 vc-mks--si-command nil "disconnect"))
 
 ;; Helper
-(defun vc-mks-command-with-cpid (buffer okstatus file-or-list &rest flags)
+(defun vc-mks--command-with-cpid (buffer okstatus file-or-list &rest flags)
   (let ((cpid (vc-mks--read-change-package)))
-    (apply #'vc-mks-command buffer okstatus file-or-list
+    (apply #'vc-mks--command buffer okstatus file-or-list
 	   (append flags (list (format "--cpid=%s" cpid))))))
 
-(defun vc-mks-command (buffer okstatus file-or-list &rest flags)
+(defun vc-mks--command (buffer okstatus file-or-list &rest flags)
   (vc-mks-connect)
   (and vc-mks-debug (message "Command: mks %S" flags))
-  (apply 'vc-do-command (or buffer vc-mks-cmd-buffer-name)
+  (apply 'vc-do-command (or buffer vc-mks--cmd-buffer-name)
 	 okstatus
-	 vc-mks-si-command
+	 vc-mks--si-command
 	 file-or-list
-	 (append flags vc-mks-common-switches)))
+	 (append flags vc-mks--common-switches)))
 
 (defun vc-mks--read-change-package ()
-  (let (cps cp)
+  (let ((cps nil)
+        (cp  nil))
     (with-temp-buffer
-      (vc-mks-command (current-buffer) 0 nil "viewcps" "--fields=id,summary")
+      (vc-mks--comman (current-buffer) 0 nil "viewcps" "--fields=id,summary")
       (goto-char (point-min))
       (while (not (eobp))
 	(setq cps (cons (buffer-substring-no-properties
