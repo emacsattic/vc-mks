@@ -318,7 +318,7 @@
   (let ((cps nil)
         (cp  nil))
     (with-temp-buffer
-      (vc-mks--comman (current-buffer) 0 nil "viewcps" "--fields=id,summary")
+      (vc-mks--command (current-buffer) 0 nil "viewcps" "--fields=id,summary")
       (goto-char (point-min))
       (while (not (eobp))
 	(setq cps (cons (buffer-substring-no-properties
