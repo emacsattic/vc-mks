@@ -57,7 +57,7 @@
 
 (defgroup vc-mks nil
   "VC MKS Integrity backend."
-  :verson "1.1"
+  :version "1.1"
   :group  'vc)
 
 (defvar vc-mks-debug nil
